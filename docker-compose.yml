@@ -1,0 +1,160 @@
+version: '3.7'
+
+services:
+  user_service:
+    build: ./user_service
+    command: uvicorn main:app --reload --workers 4 --host 0.0.0.0 --port 8001
+    volumes:
+      - ./user_service/:/src/
+    ports:
+      - 8001:8001
+    environment:
+      - DATABASE_URI=postgresql://postgres:12345@user_db/user_db
+      - PAYMENT_SERVICE_HOST_URL=http://payment_service:8001/api/v1
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - user_db
+      - redis
+
+  user_db:
+    image: postgres:12.1-alpine
+    volumes:
+      - postgres_data_user:/var/lib/postgresql/data/
+    expose:
+      - 5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=12345
+      - POSTGRES_DB=user_db
+
+  payment_service:
+    build: ./payment_service
+    command: uvicorn main:app --reload --workers 4 --host 0.0.0.0 --port 8002
+    volumes:
+      - ./payment_service/:/src/
+    ports:
+      - 8002:8002
+    environment:
+      - DATABASE_URI=postgresql://postgres:12345@payment_db/payment_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - payment_db
+      - redis
+
+  payment_db:
+    image: postgres:12.1-alpine
+    volumes:
+      - postgres_data_payment:/var/lib/postgresql/data/
+    expose:
+      - 5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=12345
+      - POSTGRES_DB=payment_db
+
+  result_service:
+    build: ./result_service
+    command: uvicorn main:app --reload --workers 4 --host 0.0.0.0 --port 8003
+    volumes:
+      - ./result_service/:/src/
+    ports:
+      - 8003:8003
+    environment:
+      - DATABASE_URI=postgresql://postgres:12345@result_db/result_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - result_db
+      - redis
+
+  result_db:
+    image: postgres:12.1-alpine
+    volumes:
+      - postgres_data_result:/var/lib/postgresql/data/
+    expose:
+      - 5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=12345
+      - POSTGRES_DB=result_db
+
+  learning_service:
+    build: ./learning_service
+    command: uvicorn main:app --reload --workers 4 --host 0.0.0.0 --port 8004
+    volumes:
+      - ./learning_service/:/src/
+    ports:
+      - 8004:8004
+    environment:
+      - DATABASE_URI=postgresql://postgres:12345@learning_db/learning_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - learning_db
+      - redis
+
+  learning_db:
+    image: postgres:12.1-alpine
+    volumes:
+      - postgres_data_learning:/var/lib/postgresql/data/
+    expose:
+      - 5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=12345
+      - POSTGRES_DB=learning_db
+  
+  worker:
+    build: .
+    command: celery worker --app=worker.celery --loglevel=info --logfile=logs/celery.log
+    volumes:
+      - ./:/usr/app
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - user_service
+      - payment_service
+      - result_service
+      - learning_service
+      - redis
+
+  redis:
+    image: redis:6-alpine
+  
+  
+  dashboard:
+    build: .
+    command:  flower --app=worker.celery --port=5555 --broker=redis://redis:6379/0
+    ports:
+      - 5556:5555
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - user_service
+      - payment_service
+      - result_service
+      - learning_service
+      - redis
+      - worker
+  
+  nginx:
+    image: nginx:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./nginx_config.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - user_service
+      - payment_service
+      - result_service
+      - learning_service
+
+volumes:
+  postgres_data_user:
+  postgres_data_payment:
+  postgres_data_result:
+  postgres_data_learning:
