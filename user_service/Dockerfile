@@ -1,4 +1,4 @@
-FROM python:3.9.4-slim
+FROM python:3.14.3-slim
 
 # set work directory
 WORKDIR /src
